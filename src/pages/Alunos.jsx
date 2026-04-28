@@ -1,193 +1,289 @@
-// Importação de hooks do React
 import { useEffect, useState } from "react";
 
-// Componentes do Material UI (interface)
 import {
   Box,
   TextField,
   Button,
   Typography,
-  Paper
+  Paper,
+  CircularProgress,
+  Snackbar,
+  Alert
 } from "@mui/material";
 
-// Funções do Firebase Firestore
 import {
-  collection,     
-  addDoc,         
-  getDocs,        
-  deleteDoc,      
-  doc,            
-  updateDoc       
+  collection,
+  addDoc,
+  getDocs,
+  deleteDoc,
+  doc,
+  updateDoc
 } from "firebase/firestore";
 
-// Conexão com banco
 import { db } from "../services/firebase";
+import { useNavigate } from "react-router-dom";
 
 export default function Alunos() {
-  // Estado para armazenar nome digitado no input
+  const navigate = useNavigate();
+
+  // Estados principais
   const [nome, setNome] = useState("");
+  const [dia, setDia] = useState("");
+  const [hora, setHora] = useState("");
+  const [valor, setValor] = useState("");
 
-  // Estado que guarda a lista de alunos vinda do banco
   const [alunos, setAlunos] = useState([]);
-
-  // Estado para saber se estamos editando um aluno
-  // Se for null → estou adicionando
-  // Se tiver um id → estou editando
   const [editandoId, setEditandoId] = useState(null);
 
+  // UX
+  const [busca, setBusca] = useState("");
+  const [loading, setLoading] = useState(false);
+  const [mensagem, setMensagem] = useState("");
+  const [erro, setErro] = useState("");
+
   // ===============================
-  // BUSCAR ALUNOS (READ)
+  // READ
   // ===============================
   async function buscarAlunos() {
-    // Busca todos os documentos da coleção "alunos"
-    const querySnapshot = await getDocs(collection(db, "alunos"));
+    setLoading(true);
 
-    // Array para armazenar os dados formatados
-    const lista = [];
+    try {
+      const querySnapshot = await getDocs(collection(db, "alunos"));
 
-    // Percorre todos os documentos retornados
-    querySnapshot.forEach((docItem) => {
-      lista.push({
-        id: docItem.id,        
-        ...docItem.data()      
+      const lista = [];
+
+      querySnapshot.forEach((docItem) => {
+        lista.push({
+          id: docItem.id,
+          ...docItem.data()
+        });
       });
-    });
 
-    // Atualiza estado com lista completa
-    setAlunos(lista);
+      setAlunos(lista);
+    } catch (error) {
+      setErro("Erro ao buscar alunos");
+    }
+
+    setLoading(false);
   }
 
   // ===============================
-  // ADICIONAR ALUNO (CREATE)
+  // CREATE
   // ===============================
   async function adicionarAluno() {
-    
-    await addDoc(collection(db, "alunos"), {
-      nome: nome,
-      createdAt: new Date()
-    });
+    try {
+      await addDoc(collection(db, "alunos"), {
+        nome,
+        dia,
+        hora,
+        valor,
+        createdAt: new Date()
+      });
 
-    // Limpa input
-    setNome("");
+      setMensagem("Aluno adicionado com sucesso");
 
-    // Atualiza lista
-    buscarAlunos();
+      setNome("");
+      setDia("");
+      setHora("");
+      setValor("");
+
+      buscarAlunos();
+    } catch {
+      setErro("Erro ao adicionar aluno");
+    }
   }
 
   // ===============================
-  // DELETAR ALUNO (DELETE)
+  // DELETE
   // ===============================
   async function deletarAluno(id) {
     await deleteDoc(doc(db, "alunos", id));
+    setMensagem("Aluno removido");
     buscarAlunos();
   }
 
   // ===============================
-  // EDITAR ALUNO (UPDATE)
+  // UPDATE
   // ===============================
   async function editarAluno(id) {
-    // Atualiza documento pelo id
     await updateDoc(doc(db, "alunos", id), {
-      nome: nome
+      nome,
+      dia,
+      hora,
+      valor
     });
 
-    // Limpa input
+    setMensagem("Aluno atualizado");
+
     setNome("");
+    setDia("");
+    setHora("");
+    setValor("");
 
-    // Sai do modo edição
     setEditandoId(null);
-
-    // Atualiza lista
     buscarAlunos();
   }
 
   // ===============================
-  // CARREGAMENTO INICIAL
+  // INIT
   // ===============================
   useEffect(() => {
-    // Quando a página carregar, busca os alunos
     buscarAlunos();
   }, []);
 
   // ===============================
-  // RENDERIZAÇÃO
+  // BUSCA
+  // ===============================
+  const alunosFiltrados = alunos.filter((aluno) =>
+    aluno.nome.toLowerCase().includes(busca.toLowerCase())
+  );
+
+  // ===============================
+  // UI
   // ===============================
   return (
     <Box sx={{ flex: 1, padding: 3 }}>
-      
-      {/* Título da página */}
       <Typography variant="h4">Alunos</Typography>
 
-      {/* Formulário (input + botão) */}
-      <Box sx={{ display: "flex", gap: 2, marginTop: 2 }}>
-        
-        {/* Campo para digitar nome */}
+      {/* Feedback */}
+      <Snackbar
+        open={!!mensagem}
+        autoHideDuration={3000}
+        onClose={() => setMensagem("")}
+      >
+        <Alert severity="success">{mensagem}</Alert>
+      </Snackbar>
+
+      <Snackbar
+        open={!!erro}
+        autoHideDuration={3000}
+        onClose={() => setErro("")}
+      >
+        <Alert severity="error">{erro}</Alert>
+      </Snackbar>
+
+      {/* Form */}
+      <Box
+        sx={{
+          display: "flex",
+          gap: 2,
+          mt: 2,
+          flexWrap: "wrap"
+        }}
+      >
         <TextField
-          label="Nome do aluno"
+          fullWidth
+          label="Nome"
           value={nome}
           onChange={(e) => setNome(e.target.value)}
         />
 
-        {/* Botão muda comportamento:
-            - Se estiver editando → salva edição
-            - Se não → adiciona novo aluno
-        */}
+        <TextField
+          fullWidth
+          label="Dia"
+          value={dia}
+          onChange={(e) => setDia(e.target.value)}
+        />
+
+        <TextField
+          fullWidth
+          label="Hora"
+          value={hora}
+          onChange={(e) => setHora(e.target.value)}
+        />
+
+        <TextField
+          fullWidth
+          label="Valor"
+          value={valor}
+          onChange={(e) => setValor(e.target.value)}
+        />
+
         <Button
+          fullWidth
           variant="contained"
           onClick={() => {
-            if (editandoId) {
-              editarAluno(editandoId);
-            } else {
-              adicionarAluno();
-            }
+            if (editandoId) editarAluno(editandoId);
+            else adicionarAluno();
           }}
         >
           {editandoId ? "Salvar" : "Adicionar"}
         </Button>
       </Box>
 
-      {/* Lista de alunos */}
-      <Box sx={{ marginTop: 4 }}>
-        {alunos.map((aluno) => (
-          
+      {/* Busca */}
+      <TextField
+        label="Buscar aluno"
+        fullWidth
+        sx={{ mt: 3 }}
+        value={busca}
+        onChange={(e) => setBusca(e.target.value)}
+      />
+
+      {/* Loading */}
+      {loading && (
+        <Box sx={{ display: "flex", justifyContent: "center", mt: 3 }}>
+          <CircularProgress />
+        </Box>
+      )}
+
+      {/* Lista */}
+      <Box sx={{ mt: 3 }}>
+        {!loading && alunosFiltrados.length === 0 && (
+          <Box sx={{ textAlign: "center", mt: 5 }}>
+            <Typography variant="h6">
+              Nenhum aluno cadastrado ainda
+            </Typography>
+            <Typography variant="body2">
+              Comece adicionando seu primeiro aluno
+            </Typography>
+          </Box>
+        )}
+
+        {alunosFiltrados.map((aluno) => (
           <Paper
             key={aluno.id}
+            onClick={() => navigate(`/alunos/${aluno.id}`)}
             sx={{
-              padding: 2,
-              marginBottom: 2,
+              cursor: "pointer",
+              p: 2,
+              mb: 2,
               display: "flex",
               justifyContent: "space-between",
-              alignItems: "center"
+              flexDirection: { xs: "column", sm: "row" },
+              gap: 2
             }}
           >
-            
-            {/* Nome do aluno */}
-            <span>{aluno.nome}</span>
+            <Box>
+              <Typography fontWeight="bold">{aluno.nome}</Typography>
+              <Typography variant="body2">
+                {aluno.dia} • {aluno.hora} • R$ {aluno.valor}
+              </Typography>
+            </Box>
 
-            {/* Botões de ação */}
             <Box sx={{ display: "flex", gap: 1 }}>
-              
-              {/* Botão editar:
-                  - Coloca nome no input
-                  - Ativa modo edição
-              */}
               <Button
-                onClick={() => {
+                onClick={(e) => {
+                  e.stopPropagation();
                   setNome(aluno.nome);
+                  setDia(aluno.dia);
+                  setHora(aluno.hora);
+                  setValor(aluno.valor);
                   setEditandoId(aluno.id);
                 }}
               >
                 Editar
               </Button>
 
-              {/* Botão excluir */}
               <Button
                 color="error"
-                onClick={() => deletarAluno(aluno.id)}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  deletarAluno(aluno.id);
+                }}
               >
                 Excluir
               </Button>
-
             </Box>
           </Paper>
         ))}
