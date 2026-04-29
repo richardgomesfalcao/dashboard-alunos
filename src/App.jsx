@@ -7,7 +7,6 @@ import { auth } from "./services/firebase";
 import Login from "./pages/Login";
 import Dashboard from "./pages/Dashboard";
 import Alunos from "./pages/Alunos";
-import Sidebar from "./components/Sidebar";
 import MainLayout from "./layout/MainLayout";
 import AlunoDetalhe from "./pages/AlunoDetalhe";
 
@@ -27,14 +26,10 @@ function App() {
   return (
     <BrowserRouter>
       <MainLayout>
-        <Sidebar />
-
         <Routes>
           <Route path="/" element={<Dashboard />} />
           <Route path="/alunos" element={<Alunos />} />
           <Route path="/alunos/:id" element={<AlunoDetalhe />} />
-
-          {/* fallback */}
           <Route path="*" element={<Navigate to="/" />} />
         </Routes>
       </MainLayout>

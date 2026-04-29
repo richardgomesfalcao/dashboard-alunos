@@ -6,10 +6,23 @@ import {
   Button,
   Typography,
   Paper,
-  CircularProgress,
-  Snackbar,
-  Alert
+  Dialog,
+  DialogTitle,
+  DialogContent,
+  DialogActions,
+  FormControl,
+  InputLabel,
+  Select,
+  MenuItem
 } from "@mui/material";
+
+import {
+  LocalizationProvider,
+  TimePicker
+} from "@mui/x-date-pickers";
+
+import { AdapterDayjs } from "@mui/x-date-pickers/AdapterDayjs";
+import dayjs from "dayjs";
 
 import {
   collection,
@@ -26,268 +39,322 @@ import { useNavigate } from "react-router-dom";
 export default function Alunos() {
   const navigate = useNavigate();
 
-  // Estados principais
+  // ===============================
+  // STATES
+  // ===============================
   const [nome, setNome] = useState("");
   const [dia, setDia] = useState("");
-  const [hora, setHora] = useState("");
+  const [hora, setHora] = useState(null);
   const [valor, setValor] = useState("");
 
   const [alunos, setAlunos] = useState([]);
-  const [editandoId, setEditandoId] = useState(null);
 
-  // UX
-  const [busca, setBusca] = useState("");
-  const [loading, setLoading] = useState(false);
-  const [mensagem, setMensagem] = useState("");
-  const [erro, setErro] = useState("");
+  const [modalOpen, setModalOpen] = useState(false);
+  const [editando, setEditando] = useState(null);
+  const [confirmOpen, setConfirmOpen] = useState(false);
+  const [alunoParaDeletar, setAlunoParaDeletar] = useState(null);
 
   // ===============================
-  // READ
+  // VALOR
   // ===============================
-  async function buscarAlunos() {
-    setLoading(true);
+  function formatarValorInput(v) {
+    v = v.replace(/\D/g, "");
+    if (!v) return "";
+    return (Number(v) / 100).toLocaleString("pt-BR", {
+      minimumFractionDigits: 2
+    });
+  }
 
-    try {
-      const querySnapshot = await getDocs(collection(db, "alunos"));
+  function parseValor(v) {
+    return Number(v.replace(",", "."));
+  }
 
-      const lista = [];
-
-      querySnapshot.forEach((docItem) => {
-        lista.push({
-          id: docItem.id,
-          ...docItem.data()
-        });
-      });
-
-      setAlunos(lista);
-    } catch (error) {
-      setErro("Erro ao buscar alunos");
-    }
-
-    setLoading(false);
+  function formatarValorDisplay(v) {
+    return Number(v).toLocaleString("pt-BR", {
+      minimumFractionDigits: 2
+    });
   }
 
   // ===============================
-  // CREATE
+  // FIREBASE
   // ===============================
+  async function buscarAlunos() {
+    const snapshot = await getDocs(collection(db, "alunos"));
+
+    const lista = snapshot.docs.map((doc) => ({
+      id: doc.id,
+      ...doc.data()
+    }));
+
+    setAlunos(lista);
+  }
+
   async function adicionarAluno() {
+    if (!nome || !dia || !hora || !valor) {
+      alert("Preencha todos os campos");
+      return;
+    }
+
     try {
       await addDoc(collection(db, "alunos"), {
         nome,
         dia,
-        hora,
-        valor,
-        createdAt: new Date()
+        hora: hora.format("HH:mm"),
+        valor: parseValor(valor)
       });
-
-      setMensagem("Aluno adicionado com sucesso");
 
       setNome("");
       setDia("");
-      setHora("");
+      setHora(null);
       setValor("");
 
       buscarAlunos();
-    } catch {
-      setErro("Erro ao adicionar aluno");
+    } catch (error) {
+      console.error(error);
+      alert("Erro ao salvar");
     }
   }
 
-  // ===============================
-  // DELETE
-  // ===============================
-  async function deletarAluno(id) {
-    await deleteDoc(doc(db, "alunos", id));
-    setMensagem("Aluno removido");
-    buscarAlunos();
-  }
-
-  // ===============================
-  // UPDATE
-  // ===============================
-  async function editarAluno(id) {
-    await updateDoc(doc(db, "alunos", id), {
-      nome,
-      dia,
-      hora,
-      valor
+  async function salvarEdicao() {
+    await updateDoc(doc(db, "alunos", editando.id), {
+      nome: editando.nome,
+      dia: editando.dia,
+      hora: editando.hora ? editando.hora.format("HH:mm") : "",
+      valor: parseValor(editando.valor)
     });
 
-    setMensagem("Aluno atualizado");
-
-    setNome("");
-    setDia("");
-    setHora("");
-    setValor("");
-
-    setEditandoId(null);
+    setModalOpen(false);
     buscarAlunos();
   }
 
-  // ===============================
-  // INIT
+  async function deletarAluno(id) {
+    await deleteDoc(doc(db, "alunos", id));
+    buscarAlunos();
+  }
+
   // ===============================
   useEffect(() => {
     buscarAlunos();
   }, []);
 
   // ===============================
-  // BUSCA
-  // ===============================
-  const alunosFiltrados = alunos.filter((aluno) =>
-    aluno.nome.toLowerCase().includes(busca.toLowerCase())
-  );
-
-  // ===============================
-  // UI
+  // RENDER
   // ===============================
   return (
-    <Box sx={{ flex: 1, padding: 3 }}>
-      <Typography variant="h4">Alunos</Typography>
+    <LocalizationProvider dateAdapter={AdapterDayjs}>
+      <Box sx={{ p: 3 }}>
 
-      {/* Feedback */}
-      <Snackbar
-        open={!!mensagem}
-        autoHideDuration={3000}
-        onClose={() => setMensagem("")}
-      >
-        <Alert severity="success">{mensagem}</Alert>
-      </Snackbar>
+        <Typography variant="h4">Alunos</Typography>
 
-      <Snackbar
-        open={!!erro}
-        autoHideDuration={3000}
-        onClose={() => setErro("")}
-      >
-        <Alert severity="error">{erro}</Alert>
-      </Snackbar>
+        {/* FORM */}
+        <Box sx={{ display: "flex", gap: 2, mt: 2, flexWrap: "wrap" }}>
 
-      {/* Form */}
-      <Box
-        sx={{
-          display: "flex",
-          gap: 2,
-          mt: 2,
-          flexWrap: "wrap"
-        }}
-      >
-        <TextField
-          fullWidth
-          label="Nome"
-          value={nome}
-          onChange={(e) => setNome(e.target.value)}
-        />
+          <TextField
+            label="Nome"
+            value={nome}
+            onChange={(e) => setNome(e.target.value)}
+          />
 
-        <TextField
-          fullWidth
-          label="Dia"
-          value={dia}
-          onChange={(e) => setDia(e.target.value)}
-        />
+          <FormControl sx={{ minWidth: 150 }}>
+            <InputLabel>Dia</InputLabel>
+            <Select value={dia} label="Dia" onChange={(e) => setDia(e.target.value)}>
+              <MenuItem value="Segunda">Segunda</MenuItem>
+              <MenuItem value="Terça">Terça</MenuItem>
+              <MenuItem value="Quarta">Quarta</MenuItem>
+              <MenuItem value="Quinta">Quinta</MenuItem>
+              <MenuItem value="Sexta">Sexta</MenuItem>
+              <MenuItem value="Sábado">Sábado</MenuItem>
+              <MenuItem value="Domingo">Domingo</MenuItem>
+            </Select>
+          </FormControl>
 
-        <TextField
-          fullWidth
-          label="Hora"
-          value={hora}
-          onChange={(e) => setHora(e.target.value)}
-        />
+          <TimePicker
+            label="Hora"
+            value={hora}
+            onChange={(newValue) => setHora(newValue)}
+          />
 
-        <TextField
-          fullWidth
-          label="Valor"
-          value={valor}
-          onChange={(e) => setValor(e.target.value)}
-        />
+          <TextField
+            label="Valor"
+            value={valor}
+            onChange={(e) => setValor(formatarValorInput(e.target.value))}
+          />
+
+        </Box>
 
         <Button
-          fullWidth
+          sx={{ mt: 3 }}
           variant="contained"
-          onClick={() => {
-            if (editandoId) editarAluno(editandoId);
-            else adicionarAluno();
-          }}
+          fullWidth
+          onClick={adicionarAluno}
         >
-          {editandoId ? "Salvar" : "Adicionar"}
+          Adicionar
         </Button>
-      </Box>
 
-      {/* Busca */}
-      <TextField
-        label="Buscar aluno"
-        fullWidth
-        sx={{ mt: 3 }}
-        value={busca}
-        onChange={(e) => setBusca(e.target.value)}
-      />
+        {/* LISTA */}
+        <Box sx={{ mt: 3 }}>
+          {alunos.map((aluno) => (
+            <Paper
+              key={aluno.id}
+              sx={{
+                p: 2,
+                mb: 2,
+                display: "flex",
+                justifyContent: "space-between"
+              }}
+            >
+              <Box
+                onClick={() => navigate(`/alunos/${aluno.id}`)}
+                sx={{ cursor: "pointer" }}
+              >
+                <Typography>{aluno.nome}</Typography>
 
-      {/* Loading */}
-      {loading && (
-        <Box sx={{ display: "flex", justifyContent: "center", mt: 3 }}>
-          <CircularProgress />
+                <Typography>
+                  {aluno.dia} • {aluno.hora} • R$ {formatarValorDisplay(aluno.valor)}
+                </Typography>
+              </Box>
+
+              <Box>
+
+                <Button
+                  onClick={() => {
+                    setEditando({
+                      ...aluno,
+                      valor: formatarValorDisplay(aluno.valor),
+                      hora: aluno.hora
+                        ? dayjs(`2024-01-01T${aluno.hora}`)
+                        : null
+                    });
+                    setModalOpen(true);
+                  }}
+                >
+                  Editar
+                </Button>
+
+                <Button
+                  color="error"
+                  onClick={() => {
+                    setAlunoParaDeletar(aluno.id);
+                    setConfirmOpen(true);
+                  }}
+                >
+                  Excluir
+                </Button>
+
+              </Box>
+            </Paper>
+          ))}
         </Box>
-      )}
 
-      {/* Lista */}
-      <Box sx={{ mt: 3 }}>
-        {!loading && alunosFiltrados.length === 0 && (
-          <Box sx={{ textAlign: "center", mt: 5 }}>
-            <Typography variant="h6">
-              Nenhum aluno cadastrado ainda
-            </Typography>
-            <Typography variant="body2">
-              Comece adicionando seu primeiro aluno
-            </Typography>
-          </Box>
-        )}
+        {/* MODAL EDITAR */}
+        <Dialog open={modalOpen} onClose={() => setModalOpen(false)} fullWidth>
+          <DialogTitle>Editar aluno</DialogTitle>
 
-        {alunosFiltrados.map((aluno) => (
-          <Paper
-            key={aluno.id}
-            onClick={() => navigate(`/alunos/${aluno.id}`)}
-            sx={{
-              cursor: "pointer",
-              p: 2,
-              mb: 2,
-              display: "flex",
-              justifyContent: "space-between",
-              flexDirection: { xs: "column", sm: "row" },
-              gap: 2
-            }}
-          >
-            <Box>
-              <Typography fontWeight="bold">{aluno.nome}</Typography>
-              <Typography variant="body2">
-                {aluno.dia} • {aluno.hora} • R$ {aluno.valor}
-              </Typography>
-            </Box>
+          <DialogContent sx={{ display: "flex", flexDirection: "column", gap: 2, mt: 1 }}>
 
-            <Box sx={{ display: "flex", gap: 1 }}>
-              <Button
-                onClick={(e) => {
-                  e.stopPropagation();
-                  setNome(aluno.nome);
-                  setDia(aluno.dia);
-                  setHora(aluno.hora);
-                  setValor(aluno.valor);
-                  setEditandoId(aluno.id);
-                }}
+            <TextField
+              label="Nome"
+              value={editando?.nome || ""}
+              onChange={(e) =>
+                setEditando({ ...editando, nome: e.target.value })
+              }
+            />
+
+            <FormControl>
+              <InputLabel>Dia</InputLabel>
+              <Select
+                value={editando?.dia || ""}
+                label="Dia"
+                onChange={(e) =>
+                  setEditando({ ...editando, dia: e.target.value })
+                }
               >
-                Editar
-              </Button>
+                <MenuItem value="Segunda">Segunda</MenuItem>
+                <MenuItem value="Terça">Terça</MenuItem>
+                <MenuItem value="Quarta">Quarta</MenuItem>
+                <MenuItem value="Quinta">Quinta</MenuItem>
+                <MenuItem value="Sexta">Sexta</MenuItem>
+                <MenuItem value="Sábado">Sábado</MenuItem>
+                <MenuItem value="Domingo">Domingo</MenuItem>
+              </Select>
+            </FormControl>
 
-              <Button
-                color="error"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  deletarAluno(aluno.id);
-                }}
-              >
-                Excluir
-              </Button>
-            </Box>
-          </Paper>
-        ))}
+            <LocalizationProvider dateAdapter={AdapterDayjs}>
+              <TimePicker
+                label="Hora"
+                value={editando?.hora || null}
+                onChange={(newValue) =>
+                  setEditando({ ...editando, hora: newValue })
+                }
+              />
+            </LocalizationProvider>
+
+            <TextField
+              label="Valor"
+              value={editando?.valor || ""}
+              onChange={(e) =>
+                setEditando({
+                  ...editando,
+                  valor: formatarValorInput(e.target.value)
+                })
+              }
+            />
+
+          </DialogContent>
+
+          <DialogActions>
+            <Button onClick={() => setModalOpen(false)}>
+              Cancelar
+            </Button>
+
+            <Button variant="contained" onClick={salvarEdicao}>
+              Salvar
+            </Button>
+          </DialogActions>
+        </Dialog>
+
+        <Dialog open={confirmOpen} onClose={() => setConfirmOpen(false)}>
+
+          <DialogTitle sx={{ fontWeight: "bold" }}>
+            Confirmar exclusão
+          </DialogTitle>
+
+          <DialogContent>
+            <Typography>
+              Tem certeza que deseja excluir este aluno?
+            </Typography>
+          </DialogContent>
+
+          <DialogActions sx={{ pb: 2, pr: 3 }}>
+
+            <Button
+              onClick={() => setConfirmOpen(false)}
+              sx={{ color: "#aaa" }}
+            >
+              Cancelar
+            </Button>
+
+            <Button
+              variant="contained"
+              color="error"
+              onClick={async () => {
+                await deletarAluno(alunoParaDeletar);
+                setConfirmOpen(false);
+              }}
+              sx={{
+                borderRadius: 2,
+                fontWeight: "bold"
+              }}
+            >
+              Excluir
+            </Button>
+
+          </DialogActions>
+
+        </Dialog>
+
       </Box>
-    </Box>
+    </LocalizationProvider>
+
   );
 }
